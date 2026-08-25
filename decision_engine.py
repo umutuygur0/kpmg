@@ -67,8 +67,13 @@ BASE_PORTFOLIOS: Dict[str, Dict[str, float]] = {
         "yatirim_fonu": 10, "hisse": 25, "temettu_hisse": 15, "kripto": 0,
     },
     "cok_riskli": {
-        "mevduat": 0, "doviz": 5, "altin": 10, "tahvil": 0,
-        "yatirim_fonu": 10, "hisse": 40, "temettu_hisse": 20, "kripto": 15,
+        # v6.2: mevduat 0 -> 5. ASSET_BOUNDS'daki mevduat min'i (5) "güvenli liman"
+        # olarak açıkça belgelenmiş (bkz. FIX-2 yorumu) ama base portföy bunu hiç
+        # karşılamıyordu — eski normalize kodu 0'ı sessizce koruyordu, yeni
+        # sınır-korumalı normalizasyon (FIX-9) bunu tutarsızlık olarak yakaladı.
+        # Fark kripto'dan düşüldü (en spekülatif kalem).
+        "mevduat": 5, "doviz": 5, "altin": 10, "tahvil": 0,
+        "yatirim_fonu": 10, "hisse": 40, "temettu_hisse": 20, "kripto": 10,
     },
 }
 
@@ -146,7 +151,7 @@ def compute_derived(df: pd.DataFrame) -> pd.DataFrame:
 
     # Enflasyon yıllık
     if "cpi_index" in d.columns:
-        d["cpi_yoy"] = d["cpi_index"].pct_change(252) * 100
+        d["cpi_yoy"] = d["cpi_index"].pct_change(252, fill_method=None) * 100
     else:
         d["cpi_yoy"] = np.nan
 
@@ -158,7 +163,7 @@ def compute_derived(df: pd.DataFrame) -> pd.DataFrame:
 
     # FX Stress
     if "usdtry" in d.columns:
-        d["usdtry_chg_30d"] = d["usdtry"].pct_change(30) * 100
+        d["usdtry_chg_30d"] = d["usdtry"].pct_change(30, fill_method=None) * 100
         roll_std            = d["usdtry"].rolling(30).std()
         roll_mean           = d["usdtry"].rolling(30).mean()
         d["fx_stress"]      = (roll_std / roll_mean).clip(0, 1)
@@ -176,7 +181,7 @@ def compute_derived(df: pd.DataFrame) -> pd.DataFrame:
     # Altın TRY reel getirisi
     if "gold_ons_usd" in d.columns and "usdtry" in d.columns:
         d["gold_try"]        = d["gold_ons_usd"] * d["usdtry"]
-        d["gold_return_yoy"] = d["gold_try"].pct_change(252) * 100
+        d["gold_return_yoy"] = d["gold_try"].pct_change(252, fill_method=None) * 100
         d["gold_real_return"] = (
             d["gold_return_yoy"] - d["cpi_yoy"]
             if "cpi_yoy" in d.columns
@@ -335,47 +340,140 @@ def score_to_adjustment(score: float, sensitivity: float) -> float:
     return direction * raw_pt * sensitivity
 
 
+def _normalize_within_bounds(values: Dict[str, float],
+                              bounds: Dict[str, Tuple[float, float]],
+                              target: float = 100.0,
+                              max_iter: int = 20) -> Dict[str, float]:
+    """
+    FIX-9: Sınır-korumalı su-doldurma normalizasyonu.
+
+    Eskiden: clip[lo,hi] uygulanıp TEK bir ortak `100/toplam` çarpanıyla
+    ölçekleniyordu. Bir varlık zaten kendi tavanındaysa (ör. hisse %55) ve
+    geri kalan toplam 100'ün altındaysa, çarpan >1 olup o varlığı KENDİ
+    tavanının üzerine itiyordu (ör. %55 -> %63) — "sınırlar asla aşılmaz"
+    iddiası fiilen doğru değildi (573 kombinasyonluk testte %51 ihlal).
+
+    Yeni yöntem: sınırına çarpan varlığı orada SABİTLER, kalan bütçeyi
+    sadece hâlâ serbest olan varlıklar arasında -kendi aralarındaki mevcut
+    oranı koruyarak- yeniden dağıtır; sınıra yeni çarpan kalmayana kadar
+    tekrarlar. Sonuç: toplam her zaman `target`e eşit VE hiçbir varlık
+    kendi [lo,hi] aralığının dışına çıkmaz.
+    """
+    values = dict(values)
+    fixed: Dict[str, float] = {}
+    free = set(values.keys())
+
+    for _ in range(max_iter):
+        if not free:
+            break
+        remaining = target - sum(fixed.values())
+        free_sum = sum(values[a] for a in free)
+
+        if free_sum <= 1e-9:
+            # Serbest varlıkların toplamı sıfır (hepsi 0'dan başlıyor) —
+            # kalan bütçeyi aralarında eşit dağıt, sınırlara göre klipler.
+            share = remaining / len(free)
+            for a in free:
+                lo, hi = bounds.get(a, (0.0, 100.0))
+                values[a] = float(np.clip(share, lo, hi))
+            break
+
+        factor = remaining / free_sum
+        newly_fixed = []
+        for a in list(free):
+            scaled = values[a] * factor
+            lo, hi = bounds.get(a, (0.0, 100.0))
+            if scaled < lo:
+                values[a] = lo
+                newly_fixed.append(a)
+            elif scaled > hi:
+                values[a] = hi
+                newly_fixed.append(a)
+            else:
+                values[a] = scaled
+
+        if not newly_fixed:
+            break
+        for a in newly_fixed:
+            fixed[a] = values[a]
+            free.discard(a)
+
+    for a in values:
+        values[a] = round(values[a], 1)
+
+    # Yuvarlama artığını dağıt: her varlığın sınırına kadar olan payını (headroom)
+    # kullanarak, gerekirse BİRDEN FAZLA varlığa bölüştür. Tek bir varlığa "olduğu
+    # gibi" uygulayan eski yöntem, o varlığın tek başına yetersiz payı varsa sınırı
+    # deliyordu (bkz. tests/test_decision_engine.py::test_never_exceeds_bounds...).
+    # Bu yöntem HİÇBİR ZAMAN bir varlığı kendi [lo,hi] dışına çıkarmaz — en kötü
+    # ihtimalle (sınırlar gerçekten imkansızsa) toplam 100'den birkaç ondalık sapar.
+    diff = round(target - sum(values.values()), 1)
+    if diff != 0:
+        order = sorted(
+            values,
+            key=lambda a: (bounds.get(a, (0, 100))[1] - values[a]) if diff > 0
+                          else (values[a] - bounds.get(a, (0, 100))[0]),
+            reverse=True,
+        )
+        remaining = diff
+        for a in order:
+            if abs(remaining) < 1e-9:
+                break
+            lo, hi = bounds.get(a, (0.0, 100.0))
+            headroom = (hi - values[a]) if remaining > 0 else (values[a] - lo)
+            take = min(abs(remaining), max(0.0, headroom))
+            if take <= 0:
+                continue
+            values[a] = round(values[a] + (take if remaining > 0 else -take), 1)
+            remaining -= take if remaining > 0 else -take
+
+    return values
+
+
 def apply_adjustments(base: Dict[str, float],
                        scores: Dict[str, float],
                        sensitivity: float) -> Tuple[Dict[str, float], Dict[str, float]]:
     """
     FIX-7: Base=0 varlıklara negatif ayar uygulanmaz.
+    FIX-8: Bütçe-nötr dengeleme — toplam artış = toplam azalış.
+    FIX-9: Sınır-korumalı normalizasyon (bkz. _normalize_within_bounds).
     Döner: (adj_map, final_alloc) — ikisi de dışarıya çıkar.
 
-    Neden önemli: base=0 bir varlık için negatif adj, normalize esnasında
-    diğer varlıkların değerini bozar. Hisse=0 → adj=-5 → 0'a klip →
-    toplam 95 kalır → normalize 100/95=1.05 ile çarpılır → her şey şişer.
+    FIX-8 neden önemli: her varlığın ham ayarı (score_to_adjustment) diğerlerinden
+    bağımsız hesaplanıyor — toplamlarının sıfır olacağının hiçbir garantisi yok.
+    Eskiden net +25pt gibi bir talep oluşunca TÜM varlıklar (ayar almayanlar dahil)
+    tek bir ortak çarpanla küçültülüp/büyütülüyordu — "bir yeri 7 kısıp başka
+    yeri 14 arttırma" hissi veren asimetri buradan geliyordu. Artık + ve - taraf
+    ortak bir hedefe (ortalamalarına) ölçekleniyor: ne kadar kesiliyorsa o kadarı
+    ekleniyor, kalan varlıklar kendi ayarı olmadıkça büyümüyor/küçülmüyor.
     """
-    adj_map = {}
+    raw_adj: Dict[str, float] = {}
     for asset in ASSETS:
         adj = score_to_adjustment(scores.get(asset, 0.5), sensitivity)
         b   = base.get(asset, 0)
-        # FIX-7: base=0 olan varlığa negatif ayar yapma
+        # FIX-7: base=0 olan varlığa negatif ayar yapma (zaten 0'ın altına inemez)
         if b == 0 and adj < 0:
             adj = 0.0
-        adj_map[asset] = adj
+        raw_adj[asset] = adj
 
-    adjusted = {asset: base.get(asset, 0) + adj_map[asset] for asset in ASSETS}
+    # FIX-8: bütçe-nötr dengeleme
+    pos_sum = sum(v for v in raw_adj.values() if v > 0)
+    neg_sum = sum(-v for v in raw_adj.values() if v < 0)
+    if pos_sum > 0 and neg_sum > 0:
+        budget = (pos_sum + neg_sum) / 2.0
+        pos_factor = budget / pos_sum
+        neg_factor = budget / neg_sum
+        adj_map = {a: (v * pos_factor if v > 0 else v * neg_factor if v < 0 else 0.0)
+                   for a, v in raw_adj.items()}
+    else:
+        # Sadece tek yönde (veya hiç) ayar var — dengelenecek karşı taraf yok.
+        adj_map = raw_adj
 
-    for k in adjusted:
-        adjusted[k] = max(0.0, adjusted[k])
+    working = {asset: max(0.0, base.get(asset, 0) + adj_map[asset]) for asset in ASSETS}
 
-    for k in adjusted:
-        lo, hi = ASSET_BOUNDS.get(k, (0, 100))
-        adjusted[k] = float(np.clip(adjusted[k], lo, hi))
+    final_alloc = _normalize_within_bounds(working, ASSET_BOUNDS, target=100.0)
 
-    total = sum(adjusted.values())
-    if total > 0:
-        factor = 100.0 / total
-        for k in adjusted:
-            adjusted[k] = round(adjusted[k] * factor, 1)
-
-    diff = round(100.0 - sum(adjusted.values()), 1)
-    if diff != 0:
-        biggest = max(adjusted, key=lambda k: adjusted[k])
-        adjusted[biggest] = round(adjusted[biggest] + diff, 1)
-
-    return adj_map, adjusted
+    return adj_map, final_alloc
 
 
 # =============================================================================
