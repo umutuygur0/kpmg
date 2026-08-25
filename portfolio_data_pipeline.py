@@ -18,10 +18,11 @@ import json
 import os
 import re
 import time
+import urllib.error
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import pandas as pd
 import requests
@@ -132,10 +133,15 @@ EVDS_SERIES = {
     "usdtry":            ("TP.DK.USD.A.YTL",  1),
     "eurtry":            ("TP.DK.EUR.A.YTL",  1),
     "deposit_rate":      ("TP.KTF10",          5),
-    "cpi_index":         ("TP.FG.J0",          5),
+    # v6.2: TP.FG.J0, 2026-01'den sonra TCMB tarafından güncellenmeyi bırakmış
+    # (muhtemelen rebaseleme/kod değişikliği) — pipeline sessizce Ocak değerini
+    # Ağustos'a kadar ffill'liyordu, cpi_yoy'u yanlış (çok düşük) gösteriyordu.
+    # TP.TUFE1YI.T1 aynı enflasyon dinamiğini takip eden, güncel tutulan seri.
+    "cpi_index":         ("TP.TUFE1YI.T1",     5),
     "gross_fx_reserves": ("TP.AB.B1",          5),
-    # v5: Turkey 10y bond EVDS'e taşındı (Yahoo çalışmıyor)
-    "turkey_10y_bond":   ("TP.DT.TRY.10",      5),
+    # v6.2: turkey_10y_bond buradan çıkarıldı — TP.DT.TRY.10 geçersiz/kaldırılmış bir
+    # seri kodu (400 Bad Request), TCMB EVDS ikincil piyasa tahvil getirisi yayımlamıyor.
+    # Artık worldgovernmentbonds.com'dan çekiliyor (bkz. WGB_SERIES).
 }
 
 FRED_SERIES = {
@@ -153,9 +159,20 @@ YF_SYMBOLS = {
     "bist100_fallback": "^XU100",
 }
 
-# v5: Investing.com — sadece CDS kaldı (DXY ve VIX FRED'den geliyor, turkey_10y EVDS'e taşındı)
-INVESTING_SOURCES = {
-    "turkey_cds_5y": "https://tr.investing.com/rates-bonds/turkey-cds-5-year-usd-historical-data",
+# v6.2: Investing.com artık istek seviyesinde (düz requests.get bile) 403 ile bilinçli
+# olarak bot engelliyor — bunu aşmaya çalışmıyoruz. turkey_cds_5y ve turkey_10y_bond
+# worldgovernmentbonds.com'un kendi sayfasının kullandığı genel-amaçlı JSON API'sine
+# taşındı (bkz. WGB_SERIES / fetch_worldgovernmentbonds). Kimlik doğrulama gerekmiyor,
+# bot koruması yok — sitenin kendi ön ucunun çağırdığı aynı public endpoint.
+INVESTING_SOURCES: dict = {}
+
+WGB_ENDPOINT = "https://www.worldgovernmentbonds.com/wp-json/common/v1/historical"
+WGB_COUNTRY_TURKEY = {"SYMBOL": "13", "PAESE": "Turkey", "PAESE_UPPERCASE": "TURKEY",
+                       "BANDIERA": "tr", "URL_PAGE": "turkey"}
+WGB_SERIES = {
+    # name: (FUNCTION, DURATA_STRING, DURATA, unit, decimal)
+    "turkey_cds_5y":   ("CDS",  "5 Years",  60,  "",  2),
+    "turkey_10y_bond": ("Bond", "10 Years", 120, "%", 3),
 }
 
 # TCMB politika faizi gömülü CSV (canlı kaynak başarısız olursa fallback)
@@ -303,12 +320,54 @@ def validate_nonempty(df: Optional[pd.DataFrame], name: str) -> pd.DataFrame:
     return df
 
 
+# Sadece GEÇİCİ (ağ seviyesi) hatalarda tekrar dener — 400/404 gibi kalıcı
+# HTTP durum hatalarında (HTTPError) retry yapmaz, direkt yükseltir; aksi halde
+# yanlış bir series/sembol kodu her seferinde 3x boşa denenir.
+TRANSIENT_ERRORS = (
+    requests.exceptions.ConnectTimeout,
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+    TimeoutError,
+    ConnectionError,
+    urllib.error.URLError,   # pd.read_csv gibi urllib tabanlı çağrılar için
+)
+PERMANENT_ERRORS = (requests.exceptions.HTTPError, urllib.error.HTTPError)
+
+
+def with_retries(fn: Callable[[], object], *, retries: int = 3, backoff: float = 2.0,
+                  retry_on: tuple = TRANSIENT_ERRORS, label: str = ""):
+    """
+    Genel amaçlı retry sarmalayıcı — herhangi bir ağ çağrısını üstel bekleme ile
+    tekrar dener. cpi_index'in tek bir chunk'ının timeout'a uğrayıp o aralığın
+    sessizce eksik kalması gibi durumları önlemek için eklendi (bkz. fetch_evds_chunked).
+
+    Not: urllib.error.HTTPError, URLError'ın alt sınıfı olduğu için retry_on'a
+    dahil olsa bile PERMANENT_ERRORS içindeyse hemen yükseltilir (kalıcı 4xx/5xx
+    hatalarını boşuna 3 kez denemeyi önler).
+    """
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except PERMANENT_ERRORS:
+            raise
+        except retry_on as e:
+            last_err = e
+            if attempt < retries:
+                wait = backoff * (2 ** (attempt - 1))
+                print(f"  [retry] {label} deneme {attempt}/{retries} başarısız ({e}), {wait:.0f}sn sonra tekrar...")
+                time.sleep(wait)
+    raise last_err
+
+
 # =============================================================================
 # A) TCMB POLİTİKA FAİZİ
 # =============================================================================
 def fetch_tcmb_policy_rate_live() -> pd.DataFrame:
-    r = requests.get(TCMB_POLICY_RATE_URL,
-                     headers={"User-Agent": BROWSER_UA}, timeout=30)
+    r = with_retries(
+        lambda: requests.get(TCMB_POLICY_RATE_URL, headers={"User-Agent": BROWSER_UA}, timeout=30),
+        label="TCMB policy_rate")
     r.raise_for_status()
     soup  = BeautifulSoup(r.text, "html.parser")
     table = soup.find("table")
@@ -378,30 +437,42 @@ def fetch_evds(series_code: str, start_date: str, end_date: str,
 
 
 def fetch_evds_chunked(series_code: str, start_date: str, end_date: str,
-                       chunk_days: int = 800, frequency: int = 1) -> pd.DataFrame:
+                       chunk_days: int = 800, frequency: int = 1) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Döner: (birleşik veri, kalıcı olarak başarısız kalan aralıkların listesi).
+    Her chunk 3 deneme hakkına sahip (with_retries) — geçici timeout'lar burada
+    özümsenir. 3 denemeden sonra hâlâ başarısızsa aralık failed_ranges'e eklenir
+    ve DatasetResult.notes üzerinden dışarı sızdırılır (eskiden sessizce yutulup
+    "ok=True" ile eksik veri üretiyordu — bkz. cpi_index 2023-01→2025-03 kaybı).
+    """
     start, end, frames, current = (pd.to_datetime(start_date), pd.to_datetime(end_date),
                                    [], pd.to_datetime(start_date))
+    failed_ranges: List[str] = []
     while current < end:
         ce = min(current + pd.Timedelta(days=chunk_days), end)
+        label = f"{series_code} {current.date()}→{ce.date()}"
         try:
-            frames.append(fetch_evds(series_code, current.strftime("%Y-%m-%d"),
-                                     ce.strftime("%Y-%m-%d"), frequency=frequency))
+            frames.append(with_retries(
+                lambda c=current, e=ce: fetch_evds(series_code, c.strftime("%Y-%m-%d"),
+                                                    e.strftime("%Y-%m-%d"), frequency=frequency),
+                label=label))
         except Exception as e:
-            print(f"  [EVDS] {current.date()}→{ce.date()} başarısız: {e}")
+            print(f"  [EVDS] {label} kalıcı başarısız (tüm denemeler tükendi): {e}")
+            failed_ranges.append(f"{current.date()}..{ce.date()}")
         current = ce + pd.Timedelta(days=1)
     if not frames:
         raise ValueError("Chunk veri yok")
     combined = pd.concat(frames, ignore_index=True)
     combined = combined.apply(
         lambda col: col.map(lambda x: str(x) if isinstance(x, (dict, list)) else x))
-    return combined.drop_duplicates()
+    return combined.drop_duplicates(), failed_ranges
 
 
 def evds_single_series_dataset(name: str, series_code: str,
                                 frequency: int = 1,
                                 fill_method: str = "ffill") -> DatasetResult:
     try:
-        raw   = fetch_evds_chunked(series_code, START_DATE, END_DATE, frequency=frequency)
+        raw, failed_ranges = fetch_evds_chunked(series_code, START_DATE, END_DATE, frequency=frequency)
         dcol  = next((c for c in raw.columns if c.upper() == "TARIH"), raw.columns[0])
         vcols = [c for c in raw.columns if c not in {dcol, "UNIXTIME"}]
         if not vcols:
@@ -409,8 +480,9 @@ def evds_single_series_dataset(name: str, series_code: str,
         std = ensure_date_value(raw, date_col=dcol, value_col=vcols[0])
         std = daily_align(std, start_date=START_DATE, end_date=END_DATE, method=fill_method)
         std = validate_nonempty(std, name)
+        notes = f"EKSIK ARALIK (kalıcı hata): {'; '.join(failed_ranges)}" if failed_ranges else ""
         return DatasetResult(name=name, ok=True, source="EVDS", method="api",
-                             dataframe=std, rawframe=raw)
+                             dataframe=std, rawframe=raw, notes=notes)
     except Exception as e:
         return DatasetResult(name=name, ok=False, source="EVDS", method="api", error=str(e))
 
@@ -420,7 +492,9 @@ def evds_single_series_dataset(name: str, series_code: str,
 # =============================================================================
 def fred_dataset(name: str, series_id: str, fill_method: str = "ffill") -> DatasetResult:
     try:
-        df = pd.read_csv(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}")
+        df = with_retries(
+            lambda: pd.read_csv(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"),
+            label=f"FRED {series_id}")
         if df.empty:
             raise ValueError("Boş")
         df.columns = ["date", "value"]
@@ -442,8 +516,10 @@ def yfinance_dataset(name: str, symbol: str, price_col: str = "Close") -> Datase
     try:
         if yf is None:
             raise ImportError("yfinance kurulu değil")
-        raw = yf.download(symbol, start=START_DATE, end=END_DATE,
-                          progress=False, auto_adjust=False)
+        raw = with_retries(
+            lambda: yf.download(symbol, start=START_DATE, end=END_DATE,
+                                progress=False, auto_adjust=False),
+            label=f"Yahoo {symbol}")
         if raw is None or raw.empty:
             raise ValueError(f"Veri yok: {symbol}")
         raw = raw.reset_index()
@@ -560,6 +636,63 @@ def investing_dataset(name: str, url: str,
 
 
 # =============================================================================
+# F) WORLDGOVERNMENTBONDS.COM — CDS + tahvil getirisi (Investing.com/EVDS yerine)
+# =============================================================================
+def fetch_worldgovernmentbonds(function: str, durata_string: str, durata: int,
+                                country: dict = WGB_COUNTRY_TURKEY,
+                                unit: str = "", decimal: int = 2) -> pd.DataFrame:
+    """
+    worldgovernmentbonds.com kendi sayfasını (ör. /cds-historical-data/turkey/5-years/)
+    JS ile render ederken bu genel-amaçlı JSON API'yi çağırıyor. Kimlik doğrulama
+    gerekmiyor, bot koruması yok — sadece kendi sitesinden gelen isteklerle sınırlamak
+    için Origin/Referer kontrol ediyor, o yüzden onları set ediyoruz.
+    """
+    payload = {
+        "GLOBALVAR": {
+            "JS_VARIABLE": "jsGlobalVars", "FUNCTION": function, "DOMESTIC": True,
+            "ENDPOINT": WGB_ENDPOINT, "DATE_RIF": "2099-12-31",
+            "OBJ": {"UNIT": unit, "DECIMAL": decimal, "UNIT_DELTA": "%", "DECIMAL_DELTA": 2},
+            "COUNTRY1": country, "COUNTRY2": None,
+            "OBJ1": {"DURATA_STRING": durata_string, "DURATA": durata},
+            "OBJ2": None,
+        }
+    }
+    headers = {
+        "User-Agent": BROWSER_UA, "Content-Type": "application/json",
+        "Origin": "https://www.worldgovernmentbonds.com",
+        "Referer": "https://www.worldgovernmentbonds.com/",
+    }
+
+    def _do():
+        r = requests.post(WGB_ENDPOINT, json=payload, headers=headers, timeout=30)
+        r.raise_for_status()
+        return r
+
+    r = with_retries(_do, label=f"WGB {function} {durata_string}")
+    data = r.json()
+    if not data.get("success"):
+        raise ValueError(f"WGB başarısız yanıt: {str(data)[:150]}")
+    quote = data.get("result", {}).get("quote", {})
+    if not quote:
+        raise ValueError("WGB boş sonuç döndü")
+    return pd.DataFrame([{"date": v["DATA_VAL"], "value": v["CLOSE_VAL"]} for v in quote.values()])
+
+
+def wgb_dataset(name: str, function: str, durata_string: str, durata: int,
+                 unit: str = "", decimal: int = 2, fill_method: str = "ffill") -> DatasetResult:
+    try:
+        raw = fetch_worldgovernmentbonds(function, durata_string, durata, unit=unit, decimal=decimal)
+        std = ensure_date_value(raw, date_col="date", value_col="value")
+        std = daily_align(std, start_date=START_DATE, end_date=END_DATE, method=fill_method)
+        std = validate_nonempty(std, name)
+        return DatasetResult(name=name, ok=True, source="worldgovernmentbonds.com",
+                             method="json_api", dataframe=std, rawframe=raw)
+    except Exception as e:
+        return DatasetResult(name=name, ok=False, source="worldgovernmentbonds.com",
+                             method="json_api", error=str(e))
+
+
+# =============================================================================
 # PIPELINE SPEC
 # =============================================================================
 def build_dataset_plan() -> List[Callable[[], DatasetResult]]:
@@ -568,31 +701,38 @@ def build_dataset_plan() -> List[Callable[[], DatasetResult]]:
     # 1. TCMB politika faizi
     plan.append(tcmb_policy_rate_dataset)
 
-    # 2. EVDS (turkey_10y_bond dahil — v5'te Yahoo'dan taşındı)
+    # 2. EVDS
     for ds_name, (code, freq) in EVDS_SERIES.items():
         n, c, f = ds_name, code, freq
         plan.append(lambda n=n, c=c, f=f:
                     evds_single_series_dataset(n, c, frequency=f, fill_method="ffill"))
 
-    # 3. FRED (vix ve broad_dollar_index burada — Investing.com kopyaları kaldırıldı)
+    # 3. FRED
     for ds_name, fcode in FRED_SERIES.items():
         n, c = ds_name, fcode
         plan.append(lambda n=n, c=c: fred_dataset(n, c, fill_method="ffill"))
 
-    # 4. Yahoo Finance (turkey_10y_bond artık burada değil)
+    # 4. Yahoo Finance
     plan.append(lambda: yfinance_dataset("gold_ons_usd", YF_SYMBOLS["gold_ons_usd"]))
     plan.append(lambda: yfinance_dataset("btc_usd",      YF_SYMBOLS["btc_usd"]))
     plan.append(lambda: yfinance_dataset("brent_oil",    YF_SYMBOLS["brent_oil"]))
     plan.append(lambda: yfinance_with_fallback(
         "bist100", [YF_SYMBOLS["bist100_primary"], YF_SYMBOLS["bist100_fallback"]]))
 
-    # 5. Investing.com — sadece turkey_cds_5y (kısa vadeli risk sinyali için yeterli)
+    # 5. Investing.com — artık kullanılmıyor (site istek seviyesinde 403 ile bilinçli
+    # bot engelliyor). INVESTING_SOURCES boş bırakıldı, aşağıdaki döngü no-op.
     dc = ["Date", "Tarih", "Zaman"]
     vc = ["Price", "Fiyat", "Son", "Şimdi"]
     for ds_name, url in INVESTING_SOURCES.items():
         n, u = ds_name, url
         plan.append(lambda n=n, u=u:
                     investing_dataset(n, u, date_candidates=dc, value_candidates=vc))
+
+    # 6. worldgovernmentbonds.com — turkey_cds_5y + turkey_10y_bond
+    for ds_name, (fn, durata_str, durata, unit, decimal) in WGB_SERIES.items():
+        n, f_, ds_, d_, u_, dec_ = ds_name, fn, durata_str, durata, unit, decimal
+        plan.append(lambda n=n, f_=f_, ds_=ds_, d_=d_, u_=u_, dec_=dec_:
+                    wgb_dataset(n, f_, ds_, d_, unit=u_, decimal=dec_))
 
     return plan
 
