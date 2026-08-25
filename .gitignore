@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Ortam değişkenleri / sırlar
+.env
+
+# Pipeline tarafından üretilen veri (kaynak değil, çıktı — pipeline yeniden çalıştırılarak üretilir)
+portfolio_data/raw/
+portfolio_data/processed/
+portfolio_data/logs/
+portfolio_data/engine_output/
+portfolio_data/base_portfolios.json
+
+# Üretilen raporlar
+stat_report_*.pdf
+
+# Editör / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code oturum durumu
+.claude/

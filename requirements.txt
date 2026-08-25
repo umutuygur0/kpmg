@@ -1,0 +1,20 @@
+# Karar motoru + veri pipeline
+pandas
+numpy
+requests
+beautifulsoup4
+lxml
+html5lib
+yfinance
+selenium
+webdriver-manager
+
+# API backend
+fastapi
+uvicorn
+
+# PDF rapor
+reportlab
+
+# Şema görseli (generate_decision_schema.py) — opsiyonel
+matplotlib

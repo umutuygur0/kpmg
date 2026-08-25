@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portföy Karar Motoru v6</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surf: #111118;
+      --brd: #1e1e2e;
+      --brd2: #2a2a3e;
+      --txt: #e8e8f0;
+      --mut: #6b6b8a;
+      --acc: #7c6af7;
+      --acc2: #a78bfa;
+      --grn: #34d399;
+      --red: #f87171;
+      --amb: #fbbf24;
+      --tel: #2dd4bf;
+      --mono: 'DM Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--txt);
+      font-family: var(--mono);
+      min-height: 100vh
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--brd);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100
+    }
+
+    .logo {
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--acc2)
+    }
+
+    .htag {
+      font-size: 10px;
+      letter-spacing: .1em;
+      color: var(--mut);
+      border: 1px solid var(--brd2);
+      padding: 2px 8px;
+      border-radius: 2px
+    }
+
+    .hdate {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--mut)
+    }
+
+    /* ── Tabs ── */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--brd);
+      padding: 0 28px;
+      background: var(--bg)
+    }
+
+    .tab {
+      padding: 12px 20px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--mut);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .15s;
+      user-select: none
+    }
+
+    .tab:hover {
+      color: var(--txt)
+    }
+
+    .tab.active {
+      color: var(--acc2);
+      border-bottom-color: var(--acc)
+    }
+
+    /* ── Shell ── */
+    .shell {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: calc(100vh - 97px)
+    }
+
+    aside {
+      border-right: 1px solid var(--brd);
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px
+    }
+
+    .slbl {
+      font-size: 9px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--mut);
+      margin-bottom: 9px
+    }
+
+    /* Profile buttons */
+    .pbtn {
+      background: var(--surf);
+      border: 1px solid var(--brd2);
+      color: var(--mut);
+      padding: 12px 13px;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      text-align: left;
+      transition: all .15s;
+      position: relative;
+      margin-bottom: 7px
+    }
+
+    .pbtn::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: transparent;
+      transition: background .15s
+    }
+
+    .pbtn:hover {
+      border-color: var(--brd);
+      color: var(--txt)
+    }
+
+    .pbtn.active {
+      border-color: var(--acc);
+      color: var(--txt);
+      background: #13131f
+    }
+
+    .pbtn.active::before {
+      background: var(--acc)
+    }
+
+    .pn {
+      font-weight: 500;
+      font-size: 13px;
+      margin-bottom: 2px
+    }
+
+    .pd {
+      font-size: 10px;
+      color: var(--mut)
+    }
+
+    /* Inputs */
+    .inp {
+      width: 100%;
+      background: var(--surf);
+      border: 1px solid var(--brd2);
+      color: var(--txt);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color .15s
+    }
+
+    .inp:focus {
+      border-color: var(--acc)
+    }
+
+    .inp-lbl {
+      font-size: 10px;
+      color: var(--mut);
+      margin-bottom: 5px
+    }
+
+    /* Run button */
+    .runbtn {
+      width: 100%;
+      background: var(--acc);
+      border: none;
+      color: #fff;
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 14px;
+      cursor: pointer;
+      transition: background .15s
+    }
+
+    .runbtn:hover {
+      background: var(--acc2)
+    }
+
+    .runbtn:active {
+      transform: scale(.98)
+    }
+
+    .runbtn:disabled {
+      background: var(--brd2);
+      color: var(--mut);
+      cursor: not-allowed
+    }
+
+    /* Main panels */
+    main {
+      padding: 24px 32px;
+      overflow-y: auto;
+      min-height: 0
+    }
+
+    .ph {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 55vh;
+      gap: 9px;
+      color: var(--mut)
+    }
+
+    .phi {
+      font-size: 32px;
+      opacity: .2
+    }
+
+    .pht {
+      font-size: 11px;
+      letter-spacing: .05em
+    }
+
+    .res {
+      display: none;
+      flex-direction: column;
+      gap: 18px
+    }
+
+    .res.on {
+      display: flex
+    }
+
+    /* Status bar */
+    .sbar {
+      display: flex;
+      gap: 18px;
+      padding: 12px 16px;
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      border-left: 3px solid var(--acc);
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px
+    }
+
+    .slb {
+      font-size: 9px;
+      letter-spacing: .15em;
+      color: var(--mut);
+      text-transform: uppercase
+    }
+
+    .svl {
+      font-size: 14px;
+      font-weight: 500
+    }
+
+    .badge {
+      margin-left: auto;
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 3px 10px
+    }
+
+    .bkriz {
+      background: rgba(248, 113, 113, .1);
+      border: 1px solid var(--red);
+      color: var(--red)
+    }
+
+    .bok {
+      background: rgba(52, 211, 153, .08);
+      border: 1px solid var(--grn);
+      color: var(--grn)
+    }
+
+    .btest {
+      background: rgba(167, 139, 250, .1);
+      border: 1px solid var(--acc);
+      color: var(--acc2)
+    }
+
+    /* Config strip */
+    .cfg {
+      font-size: 10px;
+      color: var(--mut);
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 4px 0
+    }
+
+    .ck {
+      color: var(--mut)
+    }
+
+    .cv {
+      color: var(--acc2)
+    }
+
+    /* Two col */
+    .tc {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px
+    }
+
+    .pnl {
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      padding: 16px
+    }
+
+    .ptl {
+      font-size: 9px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--mut);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--brd)
+    }
+
+    /* Alloc table */
+    .at {
+      width: 100%;
+      border-collapse: collapse
+    }
+
+    .at tr {
+      border-bottom: 1px solid var(--brd)
+    }
+
+    .at tr:last-child {
+      border: none
+    }
+
+    .at td {
+      padding: 7px 0;
+      font-size: 11px;
+      vertical-align: middle
+    }
+
+    .tn {
+      width: 130px;
+      border-left: 2px solid var(--acc);
+      padding-left: 7px
+    }
+
+    .tb {
+      width: 38px;
+      text-align: right;
+      color: var(--mut);
+      font-size: 10px
+    }
+
+    .ts {
+      width: 44px;
+      text-align: right;
+      font-size: 10px;
+      padding-right: 3px
+    }
+
+    .ta {
+      width: 38px;
+      text-align: right;
+      font-size: 11px;
+      font-weight: 500;
+      padding-right: 3px
+    }
+
+    .tf {
+      width: 46px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 500
+    }
+
+    .tbar {
+      padding-left: 7px
+    }
+
+    .bo {
+      height: 4px;
+      background: var(--brd);
+      border-radius: 2px;
+      width: 80px;
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: middle
+    }
+
+    .bi {
+      height: 100%;
+      border-radius: 2px;
+      transition: width .6s cubic-bezier(.4, 0, .2, 1)
+    }
+
+    .ttl {
+      text-align: right;
+      font-size: 10px;
+      color: var(--tel);
+      white-space: nowrap;
+      padding-left: 4px
+    }
+
+    /* Macro grid */
+    .mg {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px
+    }
+
+    .mi {
+      background: var(--bg);
+      border: 1px solid var(--brd);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px
+    }
+
+    .mk {
+      font-size: 9px;
+      color: var(--mut);
+      letter-spacing: .09em;
+      text-transform: uppercase
+    }
+
+    .mv {
+      font-size: 14px;
+      font-weight: 500
+    }
+
+    /* Score list */
+    .sl {
+      display: flex;
+      flex-direction: column;
+      gap: 8px
+    }
+
+    .sr {
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .sn {
+      font-size: 10px;
+      width: 120px;
+      color: var(--mut)
+    }
+
+    .sbo {
+      flex: 1;
+      height: 5px;
+      background: var(--brd);
+      border-radius: 3px;
+      overflow: hidden
+    }
+
+    .sbi {
+      height: 100%;
+      border-radius: 3px;
+      transition: width .7s cubic-bezier(.4, 0, .2, 1)
+    }
+
+    .sv {
+      font-size: 10px;
+      width: 36px;
+      text-align: right
+    }
+
+    .sz {
+      font-size: 9px;
+      color: var(--mut);
+      width: 38px;
+      text-align: right
+    }
+
+    /* Signals */
+    .sigl {
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .sig {
+      font-size: 11px;
+      line-height: 1.5;
+      padding: 6px 10px;
+      background: var(--bg);
+      border-left: 2px solid var(--brd2)
+    }
+
+    /* ── Backtest panel ── */
+    .bt-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px
+    }
+
+    .date-select {
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .date-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid var(--brd);
+      background: var(--bg);
+      padding: 8px
+    }
+
+    .dl-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      padding: 3px 6px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background .1s
+    }
+
+    .dl-item:hover {
+      background: var(--surf)
+    }
+
+    .dl-item input {
+      accent-color: var(--acc)
+    }
+
+    .bt-result {
+      overflow-x: auto
+    }
+
+    .btt {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      white-space: nowrap
+    }
+
+    .btt th {
+      background: var(--acc);
+      color: #fff;
+      padding: 7px 10px;
+      text-align: right;
+      font-weight: 500
+    }
+
+    .btt th:first-child {
+      text-align: left
+    }
+
+    .btt td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--brd);
+      text-align: right
+    }
+
+    .btt td:first-child {
+      text-align: left;
+      color: var(--mut)
+    }
+
+    .btt tr:nth-child(even) {
+      background: var(--surf)
+    }
+
+    .btt tr.risk-row td {
+      color: var(--amb);
+      font-style: italic
+    }
+
+    .btt tr.mode-row td {
+      color: var(--mut);
+      font-size: 10px
+    }
+
+    .trend-up {
+      color: var(--grn)
+    }
+
+    .trend-dn {
+      color: var(--red)
+    }
+
+    .trend-fl {
+      color: var(--mut)
+    }
+
+    /* Risk sparkline */
+    .spark {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 32px
+    }
+
+    .spark-bar {
+      width: 8px;
+      background: var(--acc);
+      opacity: .7;
+      border-radius: 1px 1px 0 0;
+      transition: height .4s
+    }
+
+    /* Spinner */
+    .spin {
+      display: none;
+      width: 13px;
+      height: 13px;
+      border: 2px solid var(--brd2);
+      border-top-color: var(--acc2);
+      border-radius: 50%;
+      animation: sp .7s linear infinite;
+      margin: 0 auto
+    }
+
+    .spin.on {
+      display: block
+    }
+
+    @keyframes sp {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    /* Adj colors */
+    .ap {
+      color: var(--grn)
+    }
+
+    .an {
+      color: var(--red)
+    }
+
+    .az {
+      color: var(--mut)
+    }
+
+    /* Risk scale */
+    .rl {
+      color: var(--grn)
+    }
+
+    .rm {
+      color: var(--amb)
+    }
+
+    .rh {
+      color: var(--red)
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <span class="logo">Portfolio Engine</span>
+    <span class="htag">v6 · İstatistiksel Karar Motoru</span>
+    <span class="hdate" id="hdate"></span>
+  </header>
+
+  <div class="tab-bar">
+    <div class="tab active" onclick="switchTab('live',this)">Canlı Analiz</div>
+    <div class="tab" onclick="switchTab('bt',this)">Backtest</div>
+  </div>
+
+  <div class="shell">
+    <!-- ── Sidebar ── -->
+    <aside>
+      <div>
+        <div class="slbl">Risk Profili</div>
+        <button class="pbtn" data-p="az_riskli" onclick="selP(this)">
+          <div class="pn">Az Riskli</div>
+          <div class="pd">Koruyucu · Mevduat &amp; Altın</div>
+        </button>
+        <button class="pbtn active" data-p="orta_riskli" onclick="selP(this)">
+          <div class="pn">Orta Riskli</div>
+          <div class="pd">Dengeli · Hisse + Altın + Mevduat</div>
+        </button>
+        <button class="pbtn" data-p="cok_riskli" onclick="selP(this)">
+          <div class="pn">Çok Riskli</div>
+          <div class="pd">Agresif · Hisse + Temettü + Kripto</div>
+        </button>
+      </div>
+
+      <div>
+        <div class="slbl">Portföy (TL)</div>
+        <input class="inp" type="number" id="amt" value="100000" min="1000" step="1000">
+      </div>
+
+      <!-- Backtest tarih girişi — sadece backtest tabında göster -->
+      <div id="live-date-wrap">
+        <div class="slbl">Tarih (boş = bugün)</div>
+        <input class="inp" type="date" id="live-date" placeholder="YYYY-MM-DD">
+        <div style="font-size:9px;color:var(--mut);margin-top:4px">
+          Geçmiş tarih girerek backtest yapabilirsiniz
+        </div>
+      </div>
+
+      <div id="bt-quick" style="display:none">
+        <div class="slbl">Hızlı Tarih Seçimi</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button class="inp" style="cursor:pointer;text-align:left;color:var(--acc2)"
+            onclick="selectQuickDates('monthly')">Aylık (son 12 ay)</button>
+          <button class="inp" style="cursor:pointer;text-align:left;color:var(--acc2)"
+            onclick="selectQuickDates('quarterly')">Çeyreklik</button>
+          <button class="inp" style="cursor:pointer;text-align:left;color:var(--acc2)"
+            onclick="selectQuickDates('all')">Tüm mevcut tarihler</button>
+          <button class="inp" style="cursor:pointer;text-align:left;color:var(--mut)" onclick="clearDates()">Seçimi
+            temizle</button>
+        </div>
+      </div>
+
+      <div>
+        <button class="runbtn" id="runbtn" onclick="runAction()">Analiz Başlat</button>
+        <div class="spin" id="spin" style="margin-top:12px"></div>
+      </div>
+
+      <div style="margin-top:auto">
+        <div class="slbl">Veri Kaynakları</div>
+        <div style="font-size:10px;color:var(--mut);line-height:2;letter-spacing:.03em">
+          TCMB · EVDS · FRED<br>Yahoo Finance · Investing.com
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Main ── -->
+    <main id="main-live">
+      <div class="ph" id="ph">
+        <div class="phi">◈</div>
+        <div class="pht">Profil seçin ve analiz başlatın</div>
+      </div>
+      <div class="res" id="res">
+        <div class="sbar" id="sbar"></div>
+        <div class="cfg" id="cfgstrip"></div>
+        <div class="tc">
+          <div class="pnl">
+            <div class="ptl">Sepet — Base → Ayar → Final</div>
+            <table class="at" id="at"></table>
+          </div>
+          <div class="pnl">
+            <div class="ptl">Görsel Dağılım</div>
+            <div style="position:relative;height:185px;margin-top:4px">
+              <canvas id="donut"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="tc">
+          <div class="pnl">
+            <div class="ptl">Makro Göstergeler</div>
+            <div class="mg" id="mg"></div>
+          </div>
+          <div class="pnl">
+            <div class="ptl">Varlık Cazibiyet Skorları <span style="font-size:9px;color:var(--mut)">(profil
+                bağımsız)</span></div>
+            <div style="font-size:9px;color:var(--mut);margin-bottom:8px">Skorlar makrodan hesaplanır. Profil sadece ±pt
+              büyüklüğünü etkiler.</div>
+            <div class="sl" id="sl"></div>
+          </div>
+        </div>
+        <div class="pnl">
+          <div class="ptl">Motor Sinyalleri</div>
+          <div class="sigl" id="sigl"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ── Backtest Main ── -->
+    <main id="main-bt" style="display:none">
+      <div class="ph" id="ph-bt">
+        <div class="phi">◈</div>
+        <div class="pht">Tarihleri seçip "Backtest Başlat" butonuna tıklayın</div>
+      </div>
+      <div class="res" id="res-bt">
+        <!-- Risk sparkline + özet -->
+        <div class="sbar" id="sbar-bt"></div>
+        <!-- Backtest tablo -->
+        <div class="pnl">
+          <div class="ptl">Profil Dağılımı — Tarihe Göre Değişim</div>
+          <div class="bt-result">
+            <table class="btt" id="btt"></table>
+          </div>
+        </div>
+        <!-- Risk trendi -->
+        <div class="tc">
+          <div class="pnl">
+            <div class="ptl">Risk Skoru Trendi</div>
+            <div id="risk-chart-wrap" style="position:relative;height:160px">
+              <canvas id="risk-chart"></canvas>
+            </div>
+          </div>
+          <div class="pnl">
+            <div class="ptl">En Değişken Varlıklar</div>
+            <div id="volatility-list" class="sl"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script>
+    // ══ API ═══════════════════════════════════════════════════════════════════
+    // Frontend artık kendi motor kopyasını hesaplamıyor — gerçek decision_engine.py
+    // backend.py (FastAPI) üzerinden HTTP ile çağrılıyor. Aynı origin'den servis
+    // edildiği için relatif path yeterli (backend.py hem API'yi hem bu HTML'i sunar).
+    const API_BASE = "";
+
+    async function apiGet(path) {
+      const res = await fetch(API_BASE + path);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "İstek başarısız");
+      }
+      return res.json();
+    }
+
+    async function apiPost(path, body) {
+      const res = await fetch(API_BASE + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "İstek başarısız");
+      }
+      return res.json();
+    }
+
+    // ══ STATE ═════════════════════════════════════════════════════════════════
+    let profile = "orta_riskli";
+    let currentTab = "live";
+    let donutChart = null, riskChart = null;
+    let CONFIG = null;     // /api/config — motor sabitleri (tek doğruluk kaynağı: backend)
+    let ASSETS = [], LABELS = {};
+    let ALL_DATES = [];    // /api/dates — pipeline'daki gerçek veri tarihleri
+    const COLORS = ["#7c6af7", "#2dd4bf", "#fbbf24", "#34d399", "#a78bfa", "#f87171", "#60a5fa", "#f97316"];
+    let selectedBtDates = new Set();
+
+    // ══ BAŞLANGIÇ YÜKLEMESİ ══════════════════════════════════════════════════
+    async function bootstrap() {
+      try {
+        const [cfg, dt] = await Promise.all([apiGet("/api/config"), apiGet("/api/dates")]);
+        CONFIG = cfg;
+        ASSETS = cfg.assets;
+        LABELS = cfg.labels;
+        ALL_DATES = dt.dates;
+        document.getElementById("live-date").min = dt.min_date;
+        document.getElementById("live-date").max = dt.max_date;
+        runLive();
+      } catch (e) {
+        showFatalError(e.message);
+      }
+    }
+
+    function showFatalError(msg) {
+      const ph = document.getElementById("ph");
+      ph.innerHTML = `<div class="phi" style="opacity:.5;color:var(--red)">⚠</div>
+        <div class="pht" style="color:var(--red);max-width:420px;text-align:center;line-height:1.6">
+          Backend'e bağlanılamadı: ${msg}<br>
+          <span style="color:var(--mut)">python backend.py çalışıyor mu kontrol edin.</span>
+        </div>`;
+    }
+
+    // ══ UI HELPERS ════════════════════════════════════════════════════════════
+    document.getElementById("hdate").textContent =
+      new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" });
+
+    function switchTab(tab, el) {
+      currentTab = tab;
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      el.classList.add("active");
+      document.getElementById("main-live").style.display = tab === "live" ? "block" : "none";
+      document.getElementById("main-bt").style.display = tab === "bt" ? "block" : "none";
+      document.getElementById("live-date-wrap").style.display = tab === "live" ? "block" : "none";
+      document.getElementById("bt-quick").style.display = tab === "bt" ? "block" : "none";
+      document.getElementById("runbtn").textContent = tab === "live" ? "Analiz Başlat" : "Backtest Başlat";
+      if (tab === "bt") renderDateList();
+    }
+
+    function selP(btn) {
+      document.querySelectorAll(".pbtn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active"); profile = btn.dataset.p;
+    }
+
+    function rcls(v) { return v < 0.35 ? "rl" : v < 0.65 ? "rm" : "rh" }
+    function acls(v) { return v > 0.5 ? "ap" : v < -0.5 ? "an" : "az" }
+
+    // Backend'in run_engine() çıktısını render fonksiyonlarının beklediği
+    // görünüm modeline çevirir (alan adı eşleme dışında hesap yapmaz).
+    function toViewModel(r) {
+      const neutralCnt = ASSETS.filter(a => Math.abs(r.scores[a] - 0.5) < r.config.neutral_threshold).length;
+      return {
+        profile: r.profile,
+        amount: r.amount_tl,
+        macro: r.macro,
+        scores: r.scores,
+        base: r.base_alloc,
+        adjMap: r.adjustments,
+        final: r.final_alloc,
+        tl: r.tl_alloc,
+        crisis: { is: r.is_crisis, reason: r.crisis_reason },
+        risk_score: r.risk_score,
+        neutralCnt,
+        isBacktest: r.is_backtest,
+        evalDate: r.eval_date,
+        signals: r.signals || [],
+        config: {
+          neutral_threshold: r.config.neutral_threshold,
+          vix_crisis: r.config.vix_crisis_level,
+          cds_crisis: r.config.cds_crisis_level,
+          rolling_window: r.config.rolling_window,
+        },
+      };
+    }
+
+    // ══ LIVE ══════════════════════════════════════════════════════════════════
+    function runAction() {
+      if (currentTab === "live") runLive();
+      else runBacktest();
+    }
+
+    async function runLive() {
+      const btn = document.getElementById("runbtn");
+      const spin = document.getElementById("spin");
+      const amt = parseFloat(document.getElementById("amt").value) || 100000;
+      const dateVal = document.getElementById("live-date").value || null;
+      btn.disabled = true; spin.classList.add("on");
+      try {
+        const raw = await apiPost("/api/run", { profile, date: dateVal, amount: amt });
+        renderLive(toViewModel(raw));
+      } catch (e) {
+        alert("Analiz başarısız: " + e.message);
+      } finally {
+        btn.disabled = false; spin.classList.remove("on");
+      }
+    }
+
+    function renderLive(r) {
+      document.getElementById("ph").style.display = "none";
+      const res = document.getElementById("res"); res.classList.add("on");
+
+      // Status bar
+      const rc = rcls(r.risk_score);
+      const btag = r.isBacktest ? `<span class="badge btest">BACKTEST: ${r.evalDate}</span>` :
+        r.crisis.is ? `<span class="badge bkriz">KRİZ MODU</span>` :
+          `<span class="badge bok">Normal</span>`;
+      document.getElementById("sbar").innerHTML = `
+    <div class="stat"><span class="slb">Profil</span><span class="svl">${r.profile.replace("_", " ").toUpperCase()}</span></div>
+    <div class="stat"><span class="slb">Risk</span><span class="svl ${rc}">${r.risk_score.toFixed(3)}</span></div>
+    <div class="stat"><span class="slb">Portföy</span><span class="svl">${r.amount.toLocaleString("tr-TR")} ₺</span></div>
+    <div class="stat"><span class="slb">Nötr Varlik</span><span class="svl">${r.neutralCnt}/8</span></div>
+    ${btag}`;
+
+      // Config strip
+      const c = r.config;
+      document.getElementById("cfgstrip").innerHTML =
+        `<span><span class="ck">neutral_thr=</span><span class="cv">${c.neutral_threshold}</span></span>` +
+        `<span><span class="ck">rolling=</span><span class="cv">${c.rolling_window}g</span></span>` +
+        `<span><span class="ck">VIX_kriz=</span><span class="cv">${c.vix_crisis}</span></span>` +
+        `<span><span class="ck">CDS_kriz=</span><span class="cv">${c.cds_crisis}</span></span>`;
+
+      // Alloc table
+      let rows = "";
+      ASSETS.forEach((a, i) => {
+        const b = r.base[a] || 0, sc = r.scores[a], adj = r.adjMap[a] || 0;
+        const f = r.final[a] || 0, t = r.tl[a] || 0;
+        const ac = acls(adj);
+        const as = adj > 0.05 ? `+${adj.toFixed(1)}` : adj < -0.05 ? `${adj.toFixed(1)}` : "—";
+        const sc_c = sc >= 0.65 ? "var(--grn)" : sc < 0.35 ? "var(--red)" : "var(--amb)";
+        const clr = COLORS[i % COLORS.length];
+        rows += `<tr>
+      <td class="tn" style="border-left-color:${clr}">${LABELS[a]}</td>
+      <td class="tb">${b}%</td>
+      <td class="ts" style="color:${sc_c}">${sc.toFixed(3)}</td>
+      <td class="ta ${ac}">${as}</td>
+      <td class="tf">${f}%</td>
+      <td class="tbar"><div class="bo"><div class="bi" style="width:${f}%;background:${clr}"></div></div></td>
+      <td class="ttl">${t.toLocaleString("tr-TR")}₺</td>
+    </tr>`;
+      });
+      document.getElementById("at").innerHTML = rows;
+
+      // Donut
+      if (donutChart) donutChart.destroy();
+      donutChart = new Chart(document.getElementById("donut").getContext("2d"), {
+        type: "doughnut",
+        data: {
+          labels: ASSETS.map(a => LABELS[a]),
+          datasets: [{
+            data: ASSETS.map(a => r.final[a] || 0),
+            backgroundColor: COLORS, borderWidth: 1, borderColor: "#0a0a0f"
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              bodyColor: "#e8e8f0", backgroundColor: "#111118",
+              borderColor: "#1e1e2e", borderWidth: 1,
+              callbacks: { label: c => ` ${c.label}: ${c.parsed}%` }
+            }
+          },
+          animation: { duration: 600 }
+        }
+      });
+
+      // Macro
+      const m = r.macro;
+      const macroItems = [
+        ["Politika Faizi", m.policy_rate != null ? `%${m.policy_rate}` : "N/A", ""],
+        ["Reel Faiz", m.real_rate != null ? `%${m.real_rate}` : "N/A", m.real_rate < 0 ? "var(--red)" : "var(--grn)"],
+        ["CPI (yıllık)", m.cpi_yoy != null ? `%${m.cpi_yoy}` : "N/A", "var(--red)"],
+        ["USD/TRY 30g", m.usdtry_chg_30d != null ? `%${m.usdtry_chg_30d}` : "N/A", ""],
+        ["BIST Momentum", m.bist_momentum != null ? `%${m.bist_momentum}` : "N/A",
+          m.bist_momentum > 0 ? "var(--grn)" : "var(--red)"],
+        ["FX Stres", m.fx_stress != null ? m.fx_stress.toFixed(3) : "N/A", ""],
+        ["VIX", m.vix_level != null ? m.vix_level.toFixed(1) : "N/A",
+          m.vix_level > 25 ? "var(--amb)" : "var(--grn)"],
+        ["CDS 5Y", m.cds_level != null ? m.cds_level.toString() : "N/A",
+          m.cds_level > 500 ? "var(--amb)" : "var(--grn)"],
+      ];
+      document.getElementById("mg").innerHTML = macroItems
+        .map(([k, v, c]) => `<div class="mi"><span class="mk">${k}</span>
+      <span class="mv" style="${c ? 'color:' + c : ''}">${v}</span></div>`).join("");
+
+      // Scores
+      document.getElementById("sl").innerHTML = ASSETS.map((a, i) => {
+        const sc = r.scores[a];
+        const c = sc >= 0.65 ? "var(--grn)" : sc < 0.35 ? "var(--red)" : "var(--amb)";
+        const dev = Math.abs(sc - 0.5);
+        const zone = dev < r.config.neutral_threshold ? "nötr" : dev < 0.22 ? "hafif" : dev < 0.38 ? "orta" : "güçlü";
+        return `<div class="sr">
+      <span class="sn">${LABELS[a]}</span>
+      <div class="sbo"><div class="sbi" style="width:${sc * 100}%;background:${c}"></div></div>
+      <span class="sv" style="color:${c}">${sc.toFixed(3)}</span>
+      <span class="sz">${zone}</span>
+    </div>`;
+      }).join("");
+
+      // Signals — backend zaten Türkçe sinyal cümleleri üretiyor (decision_engine._generate_signals)
+      document.getElementById("sigl").innerHTML =
+        r.signals.map(s => `<div class="sig">${s}</div>`).join("");
+
+      res.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ══ BACKTEST ══════════════════════════════════════════════════════════════
+    function monthEndDates(dates) {
+      const map = new Map();
+      dates.forEach(d => map.set(d.slice(0, 7), d));   // tarihler artan sıralı -> son değer ay sonu
+      return [...map.values()];
+    }
+
+    function quarterEndDates(dates) {
+      const map = new Map();
+      dates.forEach(d => {
+        const [y, m] = d.split("-");
+        const q = Math.ceil(parseInt(m, 10) / 3);
+        map.set(`${y}-Q${q}`, d);
+      });
+      return [...map.values()];
+    }
+
+    function renderDateList() {
+      const existing = document.getElementById("bt-date-list");
+      if (existing) return; // already rendered
+      const wrap = document.createElement("div");
+      wrap.id = "bt-date-list"; wrap.className = "date-list"; wrap.style.marginTop = "8px";
+      monthEndDates(ALL_DATES).forEach(d => {
+        const item = document.createElement("label");
+        item.className = "dl-item";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.value = d;
+        cb.onchange = () => { if (cb.checked) selectedBtDates.add(d); else selectedBtDates.delete(d); };
+        item.appendChild(cb);
+        item.appendChild(document.createTextNode(d));
+        wrap.appendChild(item);
+      });
+      document.getElementById("bt-quick").appendChild(wrap);
+    }
+
+    function selectQuickDates(mode) {
+      selectedBtDates.clear();
+      const months = monthEndDates(ALL_DATES);
+      let pick;
+      if (mode === "monthly") pick = months.slice(-12);
+      else if (mode === "quarterly") pick = quarterEndDates(ALL_DATES);
+      else pick = months;   // "Tüm mevcut tarihler" = veri aralığındaki her ayın son günü
+      pick.forEach(d => selectedBtDates.add(d));
+      document.querySelectorAll("#bt-date-list input[type=checkbox]").forEach(cb => {
+        cb.checked = selectedBtDates.has(cb.value);
+      });
+    }
+
+    function clearDates() {
+      selectedBtDates.clear();
+      document.querySelectorAll("#bt-date-list input[type=checkbox]").forEach(cb => cb.checked = false);
+    }
+
+    async function runBacktest() {
+      const btn = document.getElementById("runbtn");
+      const spin = document.getElementById("spin");
+      const amt = parseFloat(document.getElementById("amt").value) || 100000;
+
+      const dates = [...selectedBtDates].sort();
+      if (dates.length === 0) { alert("En az 1 tarih seçin."); return; }
+
+      btn.disabled = true; spin.classList.add("on");
+      try {
+        const raw = await apiPost("/api/backtest", { profile, dates, amount: amt });
+        renderBacktest(raw.results.map(toViewModel));
+      } catch (e) {
+        alert("Backtest başarısız: " + e.message);
+      } finally {
+        btn.disabled = false; spin.classList.remove("on");
+      }
+    }
+
+    function renderBacktest(results) {
+      document.getElementById("ph-bt").style.display = "none";
+      const res = document.getElementById("res-bt"); res.classList.add("on");
+
+      // Status bar
+      const avgRisk = (results.reduce((s, r) => s + r.risk_score, 0) / results.length).toFixed(3);
+      const minR = Math.min(...results.map(r => r.risk_score)).toFixed(3);
+      const maxR = Math.max(...results.map(r => r.risk_score)).toFixed(3);
+      document.getElementById("sbar-bt").innerHTML = `
+    <div class="stat"><span class="slb">Profil</span><span class="svl">${profile.replace("_", " ").toUpperCase()}</span></div>
+    <div class="stat"><span class="slb">Tarih Sayısı</span><span class="svl">${results.length}</span></div>
+    <div class="stat"><span class="slb">Ort. Risk</span><span class="svl ${rcls(parseFloat(avgRisk))}">${avgRisk}</span></div>
+    <div class="stat"><span class="slb">Min Risk</span><span class="svl rl">${minR}</span></div>
+    <div class="stat"><span class="slb">Max Risk</span><span class="svl rh">${maxR}</span></div>`;
+
+      // Backtest tablosu
+      let thead = `<tr><th style="text-align:left">Varlık</th>`;
+      results.forEach(r => { thead += `<th>${r.evalDate}</th>`; });
+      thead += `</tr>`;
+
+      let tbody = "";
+      ASSETS.forEach(a => {
+        const vals = results.map(r => r.final[a] || 0);
+        let row = `<tr><td>${LABELS[a]}</td>`;
+        vals.forEach((v, i) => {
+          const prev = i > 0 ? vals[i - 1] : v;
+          const tclass = v > prev + 0.5 ? "trend-up" : v < prev - 0.5 ? "trend-dn" : "trend-fl";
+          const arrow = v > prev + 0.5 ? " ↑" : v < prev - 0.5 ? " ↓" : "";
+          row += `<td class="${tclass}">${v.toFixed(1)}%${arrow}</td>`;
+        });
+        row += `</tr>`;
+        tbody += row;
+      });
+
+      // Risk ve mod satırları
+      tbody += `<tr class="risk-row"><td>Risk Skoru</td>`;
+      results.forEach(r => { tbody += `<td class="${rcls(r.risk_score)}">${r.risk_score.toFixed(3)}</td>`; });
+      tbody += `</tr>`;
+
+      tbody += `<tr class="mode-row"><td>Mod</td>`;
+      results.forEach(r => { tbody += `<td>${r.crisis.is ? "KRİZ" : "Normal"}</td>`; });
+      tbody += `</tr>`;
+
+      document.getElementById("btt").innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
+
+      // Risk chart
+      if (riskChart) riskChart.destroy();
+      riskChart = new Chart(document.getElementById("risk-chart").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: results.map(r => r.evalDate),
+          datasets: [{
+            label: "Risk Skoru",
+            data: results.map(r => r.risk_score),
+            borderColor: "#7c6af7", backgroundColor: "rgba(124,106,247,.1)",
+            borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#7c6af7", fill: true, tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            y: {
+              min: 0, max: 1, grid: { color: "rgba(255,255,255,.05)" },
+              ticks: { color: "#6b6b8a", font: { size: 10 } }
+            },
+            x: {
+              grid: { color: "rgba(255,255,255,.05)" },
+              ticks: { color: "#6b6b8a", font: { size: 9 }, maxRotation: 30 }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              bodyColor: "#e8e8f0", backgroundColor: "#111118",
+              borderColor: "#1e1e2e", borderWidth: 1
+            }
+          }
+        }
+      });
+
+      // Volatilite listesi (en çok değişen varlıklar)
+      const volData = ASSETS.map(a => {
+        const vals = results.map(r => r.final[a] || 0);
+        const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+        const std = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
+        return { a, std, mean, min: Math.min(...vals), max: Math.max(...vals) };
+      }).sort((a, b) => b.std - a.std);
+
+      document.getElementById("volatility-list").innerHTML = volData.map((d, i) => {
+        const w = Math.min(100, d.std * 10);
+        const c = d.std > 5 ? "var(--amb)" : d.std > 2 ? "var(--acc2)" : "var(--grn)";
+        return `<div class="sr">
+      <span class="sn">${LABELS[d.a]}</span>
+      <div class="sbo"><div class="sbi" style="width:${w}%;background:${c}"></div></div>
+      <span class="sv" style="color:${c}">±${d.std.toFixed(1)}%</span>
+      <span class="sz" style="font-size:9px">${d.min.toFixed(0)}-${d.max.toFixed(0)}%</span>
+    </div>`;
+      }).join("");
+
+      res.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ══ INIT ══════════════════════════════════════════════════════════════════
+    bootstrap();
+  </script>
+</body>
+
+
+</html>
