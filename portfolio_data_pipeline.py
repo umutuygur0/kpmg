@@ -50,7 +50,7 @@ except Exception:
 # =============================================================================
 # CONFIG
 # =============================================================================
-START_DATE   = os.environ.get("START_DATE",   "2023-01-01")   # v5: 2 yıllık veri yeterli
+START_DATE   = os.environ.get("START_DATE",   "2020-01-01")   # v6.2: backtest için çoklu rejim (Covid çöküşü, 2021 kur krizi, 2023 sıkılaştırma)
 END_DATE     = os.environ.get("END_DATE",     datetime.today().strftime("%Y-%m-%d"))
 OUTPUT_ROOT  = os.environ.get("OUTPUT_ROOT",  "./portfolio_data")
 EVDS_API_KEY = os.environ.get("EVDS_API_KEY", "")

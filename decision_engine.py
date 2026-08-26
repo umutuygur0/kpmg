@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-Portfolio Decision Engine — v6
+Portfolio Decision Engine — v6.3
 Değişiklikler (v5 → v6):
   FIX-1  NEUTRAL_THRESHOLD 0.15 → 0.08  (nötr bölge kapanı giderildi)
   FIX-2  ASSET_BOUNDS eklendi           (varlık başına min/max sınır)
@@ -9,6 +9,15 @@ Değişiklikler (v5 → v6):
   FIX-5  Kriz modu: risk_score eşiğine EK olarak VIX>40 veya CDS>700 hard-tetik
   FIX-6  compute_asset_scores profil argümanı KALDIRILDI (zaten profile bağlı değildi,
           ama dışarıdan çağrıldığında kafa karışıklığı yaratıyordu)
+Değişiklikler (v6 → v6.3, "derin motor" fazı — Faz 1/2 bulgularına dayalı):
+  FIX-7  apply_adjustments: base=0 varlığa negatif ayar yok
+  FIX-8  apply_adjustments: bütçe-nötr (toplam artış = toplam azalış) dengeleme
+  FIX-9  _normalize_within_bounds: sınır-korumalı su-doldurma normalizasyonu
+  FIX-10 compute_asset_scores: walk-forward Information Coefficient testiyle
+          doğrulanmış kural-bazlı düzeltmeler (risk_score'un hisse/temettü/
+          kripto/mevduat'taki ters yönlü etkisi kaldırıldı, tahvil'e fx_stress
+          eklendi, yatirim_fonu momentum-takibe çevrildi — bkz. signal_validation.py,
+          calibrate_weights.py ve ilgili commit notları)
 
 Kullanım:
   python decision_engine.py                       # interaktif
@@ -283,30 +292,71 @@ def compute_asset_scores(df: pd.DataFrame,
     grr_pct  = safe_pct("gold_real_return")
     us10_inv = safe_pct("us10y", reverse=True)
 
-    # Mevduat: reel faiz yüksekse + risk yüksekse (güvenli liman)
-    s["mevduat"]       = rr_pct * 0.6  + risk * 0.4
+    # ── FIX-10: Faz 1 (signal_validation.py, 2020-2026 IC testi) + Faz 2
+    # (calibrate_weights.py split-kararlılığı) bulgularına göre kural-bazlı
+    # düzeltme. Her değişikliğin somut kanıtı:
+    #
+    #  mevduat  risk*0.4 KALDIRILDI: risk_score->mevduat IC=-0.70 (formül risk
+    #           yüksekken DAHA cazip varsayıyordu, veri tam tersini gösteriyor —
+    #           risk_score zaten real_rate'in tersiyle ilişkili, rr_pct tek
+    #           başına IC=+0.75 ile açıklıyor, risk terimi çelişip bozuyordu).
+    #  altin    fxs_pct*0.2 KALDIRILDI: fx_stress->altin IC anlamsız (p>0.10,
+    #           tüm ufuklarda). grr_pct YÖN DEĞİŞTİRİLDİ: gold_real_return->altin
+    #           IC=-0.09 (60g) — formül momentum varsayıyordu, veri zayıf ama
+    #           tutarlı mean-reversion gösteriyor.
+    #  tahvil   rr_pct YÖN DEĞİŞTİRİLDİ ve risk YÖN DEĞİŞTİRİLDİ: durasyon-
+    #           ayarlı backtest sonrası real_rate->tahvil IC=-0.21 (eskiden
+    #           +0.75 görünüyordu ama saf carry-proxy artifaktıydı — bkz.
+    #           backtest/simulate.py FIX notu), risk_score->tahvil IC=+0.30
+    #           (ikisi de formülün varsaydığının tersi). fx_stress EKLENDİ:
+    #           Faz 2'de her walk-forward split'te (8/8) en güçlü özellik
+    #           olarak seçildi, negatif yönlü — FX stresi tahvil fiyatını da
+    #           vuruyor.
+    #  yatirim_fonu  neutrality YERİNE bist_pct: Faz 1 "ortada olan cazip"
+    #           hipotezini değil, ham bist_momentum->yatirim_fonu IC=+0.10
+    #           (momentum-takip) buluyor. rr_pct ve risk YÖN DEĞİŞTİRİLDİ
+    #           (real_rate->yatirim_fonu IC=-0.15, risk_score->yatirim_fonu
+    #           IC=+0.17 — formülün varsaydığının tersi).
+    #  hisse    (1-risk)*0.5 KALDIRILDI: risk_score->hisse IC=+0.32 (60g),
+    #           cds_level->hisse IC=+0.40 — GÜÇLÜ ve TUTARLI ters yön. Bu
+    #           Türkiye'ye özgü belgelenmiş bir dinamik olabilir (BIST,
+    #           2021'den beri TL devalüasyonuna karşı "ayna görüntüsü"
+    #           davranıyor — bkz. Faz 1 sonrası web araştırması); basit
+    #           "risk yüksek->hisseden kaç" mantığı ampirik olarak yanlış.
+    #  temettu_hisse  (1-risk)*0.4 KALDIRILDI (aynı gerekçe — hisse ile aynı
+    #           ters ilişki, çünkü formül hisse'nin altkümesi).
+    #  kripto   (1-risk)*0.6 KALDIRILDI: risk_score->kripto IC=+0.06..+0.08
+    #           (zayıf ama anlamlı, ters yön).
+    #
+    # Değişmeyenler (kanıtla desteklendiği için korunuyor): doviz'in tüm
+    # bileşenleri, tahvil/kripto'daki us10_inv, hisse/temettü'deki bist_pct.
 
-    # Döviz: kur baskısı yüksekse + reel faiz düşükse
+    # Mevduat: SADECE reel faiz (risk terimi kanıtla çelişiyordu, kaldırıldı)
+    s["mevduat"]       = rr_pct * 1.0
+
+    # Döviz: değişmedi — üç bileşen de doğru yönde ve anlamlı
     s["doviz"]         = fxs_pct * 0.5 + risk * 0.3 + (1 - rr_pct) * 0.2
 
-    # Altın: risk yüksekse + altın reel getirisi iyiyse
-    s["altin"]         = risk * 0.5    + grr_pct * 0.3 + fxs_pct * 0.2
+    # Altın: fx_stress kaldırıldı (anlamsız), altın reel getirisi ters çevrildi
+    # (zayıf mean-reversion), risk ağırlığı düşürüldü (zayıf/sınırda anlamlı)
+    s["altin"]         = risk * 0.6    + (1 - grr_pct) * 0.4
 
-    # Tahvil: reel faiz pozitif + risk düşükse
-    s["tahvil"]        = rr_pct * 0.5  + (1 - risk) * 0.3 + us10_inv * 0.2
+    # Tahvil: reel faiz ve risk yönü çevrildi (carry-proxy artifaktı düzeltildikten
+    # sonraki gerçek IC), fx_stress eklendi (Faz 2'de 8/8 split'te seçildi)
+    s["tahvil"]        = (1 - rr_pct) * 0.4 + risk * 0.3 + us10_inv * 0.2 + (1 - fxs_pct) * 0.1
 
-    # Yatırım Fonu: piyasa ne çok iyi ne çok kötü (ortada) → karma fon cazip
-    neutrality         = 1 - abs(bist_pct - 0.5) * 2
-    s["yatirim_fonu"]  = neutrality * 0.4 + (1 - risk) * 0.3 + rr_pct * 0.3
+    # Yatırım Fonu: "ortada olan cazip" hipotezi yerine momentum-takip
+    # (ham veri bunu destekliyor), reel faiz ve risk yönü çevrildi
+    s["yatirim_fonu"]  = bist_pct * 0.4 + risk * 0.3 + (1 - rr_pct) * 0.3
 
-    # Hisse: borsa momentum + düşük risk
-    s["hisse"]         = bist_pct * 0.5 + (1 - risk) * 0.5
+    # Hisse: SADECE momentum (risk terimi güçlü ters yönlüydü, kaldırıldı)
+    s["hisse"]         = bist_pct * 1.0
 
-    # Temettü: faiz düşükse tahvil alternatifi olarak cazip + stabil piyasa
-    s["temettu_hisse"] = (1 - rr_pct) * 0.4 + (1 - risk) * 0.4 + bist_pct * 0.2
+    # Temettü: risk terimi kaldırıldı, kalan iki bileşene yeniden dağıtıldı
+    s["temettu_hisse"] = (1 - rr_pct) * 0.67 + bist_pct * 0.33
 
-    # Kripto: risk-on + global likidite yüksekse
-    s["kripto"]        = (1 - risk) * 0.6 + us10_inv * 0.4
+    # Kripto: SADECE küresel likidite (risk terimi zayıf ters yönlüydü, kaldırıldı)
+    s["kripto"]        = us10_inv * 1.0
 
     for k in s:
         s[k] = float(np.clip(s[k], 0, 1))
